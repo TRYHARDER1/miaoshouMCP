@@ -4,6 +4,8 @@ Java 21、Spring Boot 3.5.16、Spring AI 1.1.8、MyBatis-Plus 与 SQLite 的本�
 
 当前实现包含 M0–M3 基础、重量草稿以及 M4 DeepSeek 文本优化。里程碑与阶段边界见 [开发任务](temp-doc/task.md)。
 
+M5.1 正在开发，已完成商品图和详情图提取基础。真实 SKU 图片路径与计划假设不同，已按计划暂停相关分支并等待确认；新图片工具尚未注册。进度及续接入口见 [M5 任务](temp-doc/M5/M5-task.md)，阶段结果见 [M5.1 测试记录](temp-doc/M5/M5.1-test-report.md)。
+
 ## 启动
 
 准备 Java 21 和 Maven 3.6.3 或更新版本。PowerShell 7 下执行以下命令。
