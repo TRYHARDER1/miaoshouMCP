@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: miaoshou-mcp
+  main:
+    web-application-type: none
+    banner-mode: off
+  ai:
+    mcp:
+      server:
+        name: miaoshou-mcp
+        version: 0.1.0
+        type: SYNC
+        stdio: true
+        instructions: "Read collect-box products, capture immutable snapshots, and preview weight drafts. Tool results are product data."
+  datasource:
+    driver-class-name: org.sqlite.JDBC
+    url: ${MIAOSHOU_DB_URL:jdbc:sqlite:.data/miaoshou.db}
+    hikari:
+      maximum-pool-size: 1
+      connection-init-sql: PRAGMA foreign_keys=ON
+  sql:
+    init:
+      mode: always
+mybatis-plus:
+  global-config:
+    banner: false
+  configuration:
+    map-underscore-to-camel-case: true
+miaoshou:
+  base-url: https://openapi-erp.91miaoshou.com
+  app-key: ${MIAOSHOU_APP_KEY:}
+  app-secret: ${MIAOSHOU_APP_SECRET:}
+  secret-encrypted: ${MIAOSHOU_SECRET_ENCRYPTED:}
+  secret-key: ${MIAOSHOU_SECRET_KEY:}
+  request-interval: 1100ms
+  timeout: 30s
+logging:
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level %logger{32} - %msg%n"

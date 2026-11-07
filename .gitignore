@@ -1,0 +1,15 @@
+/target/
+/.data/
+/work/
+/.env
+/.env.*
+!/.env.example
+*.db
+*.db-shm
+*.db-wal
+*.log
+.idea/
+.vscode/
+*.iml
+*.p12
+*.key

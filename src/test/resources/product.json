@@ -1,0 +1,35 @@
+{
+  "ossMd5": "fixture-baseline",
+  "editModel": "shop",
+  "claimToShopIds": [23],
+  "shopCollectItemInfo": {
+    "detailId": 17,
+    "shopId": 23,
+    "site": "SG",
+    "title": "Example toy with multiple colors and packaging",
+    "notes": "<p>Fixture description</p>",
+    "weight": 0.50,
+    "packageLength": 10,
+    "packageWidth": 11,
+    "packageHeight": 12,
+    "platformField": {"keep": true},
+    "imgUrls": ["https://example.com/a.jpg", "https://example.com/c.jpg"],
+    "productAttributes": [],
+    "skuPropertyList": [
+      {"attrId": null, "attrName": "Color", "attrValueList": [
+        {"attrValueId": "a", "attrValue": "Red", "imgUrl": "https://example.com/a.jpg"},
+        {"attrValueId": "c", "attrValue": "Blue", "imgUrl": "https://example.com/c.jpg"}
+      ]},
+      {"attrId": "pack", "attrName": "Packaging", "attrValueList": [
+        {"attrValueId": "b", "attrValue": "Loose", "imgUrl": null},
+        {"attrValueId": "d", "attrValue": "Bag", "imgUrl": null}
+      ]}
+    ],
+    "skuMap": {
+      ";a;b;": {"price": 8.99, "stock": 3, "weight": 0.45, "extra": "keep"},
+      ";a;d;": {"price": 9.99, "stock": 4, "weight": 0.60},
+      ";b;c;": {"price": 10.99, "stock": 5, "weight": null},
+      ";c;d;": {"price": 11.99, "stock": 6}
+    }
+  }
+}
