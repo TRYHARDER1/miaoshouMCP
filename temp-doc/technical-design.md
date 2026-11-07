@@ -28,7 +28,7 @@ M7 将增加审批状态迁移和版本冲突检查。保存前重新读取并�
 
 ## 后续 Provider
 
-M4 确定 KeywordProvider 与 LlmProvider 的真实数据来源和输出协议。M5 对接独立 ImageProvider/Muse，执行质量校验并记录图片空间上传结果。M6 复现官方运费等模板参数的定价公式，并用实际后台价格作为基准。
+M4 已接入 DeepSeek LlmProvider 与 ManualKeywordProvider，详细方案见 M4-technical-design.md。M5 对接独立 ImageProvider/Muse，执行质量校验并记录图片空间上传结果。M6 复现官方运费等模板参数的定价公式，并用实际后台价格作为基准。
 
 ## 参考资料
 

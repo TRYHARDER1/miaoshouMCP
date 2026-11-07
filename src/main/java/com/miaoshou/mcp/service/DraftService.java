@@ -58,6 +58,23 @@ public class DraftService {
         }
         return Map.of("draftId", row.id(), "snapshotId", snapshot.id(), "detailId", snapshot.detailId(),
                 "shopId", snapshot.shopId(), "baselineOssMd5", snapshot.ossMd5(), "status", row.status(),
-                "changes", JsonDiff.compare(snapshots.product(snapshot), product), "draftProduct", product);
+                "kind", row.kind(), "changes", JsonDiff.compare(snapshots.product(snapshot), product), "draftProduct", product);
+    }
+
+    @Transactional
+    public Map<String, Object> create(String snapshotId, String kind, JsonNode product) {
+        SnapshotRow snapshot = snapshots.find(snapshotId);
+        validator.assertIdentityUnchanged(snapshots.product(snapshot), product);
+        drafts.insertIfAbsent(new DraftRow(UUID.randomUUID().toString(), snapshotId, kind,
+                "PENDING_REVIEW", product.toString(), clock.instant().toString()));
+        DraftRow row = drafts.findBySnapshot(snapshotId, kind);
+        try {
+            if (!mapper.readTree(row.draftJson()).equals(product)) {
+                throw new BusinessException("DRAFT_CONFLICT", "This generation already has a different stored draft");
+            }
+        } catch (JsonProcessingException exception) {
+            throw new BusinessException("DRAFT_INVALID", "Stored draft JSON is invalid");
+        }
+        return preview(row.id());
     }
 }

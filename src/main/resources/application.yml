@@ -34,6 +34,13 @@ miaoshou:
   secret-key: ${MIAOSHOU_SECRET_KEY:}
   request-interval: 1100ms
   timeout: 30s
+llm:
+  provider: ${LLM_PROVIDER:deepseek}
+  api-key: ${DEEPSEEK_API_KEY:}
+  base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+  model: ${DEEPSEEK_MODEL:deepseek-flash}
+  timeout: 120s
+  max-tokens: 6000
 logging:
   pattern:
     console: "%d{HH:mm:ss.SSS} %-5level %logger{32} - %msg%n"

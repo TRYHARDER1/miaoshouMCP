@@ -19,3 +19,19 @@ CREATE TABLE IF NOT EXISTS ms_product_draft (
   created_at TEXT NOT NULL,
   UNIQUE(snapshot_id, kind)
 );
+CREATE TABLE IF NOT EXISTS ms_ai_generation (
+  id TEXT PRIMARY KEY,
+  snapshot_id TEXT NOT NULL REFERENCES ms_product_snapshot(id),
+  task TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  prompt_version TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  completed_at TEXT,
+  input_summary_json TEXT NOT NULL,
+  output_json TEXT,
+  validation_status TEXT NOT NULL,
+  review_status TEXT NOT NULL DEFAULT 'PENDING_REVIEW',
+  error_code TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_generation_snapshot ON ms_ai_generation(snapshot_id, started_at);

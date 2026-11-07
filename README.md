@@ -2,7 +2,7 @@
 
 Java 21、Spring Boot 3.5.16、Spring AI 1.1.8、MyBatis-Plus 与 SQLite 的本地 STDIO 服务。当前版本为 `0.1.0`。
 
-初版完成 M0–M3 的基础能力，并提供已确认重量规则的本地草稿预览。后续里程碑见 [开发任务](temp-doc/task.md)。
+当前实现包含 M0–M3 基础、重量草稿以及 M4 DeepSeek 文本优化。里程碑与阶段边界见 [开发任务](temp-doc/task.md)。
 
 ## 启动
 
@@ -39,6 +39,8 @@ MCP 客户端配置示例如下。凭证由客户端环境配置或安全存储�
 
 数据库可用 `MIAOSHOU_DB_URL` 指定绝对路径，父目录需预先创建。没有 API 凭证时可启动 MCP 和查看工具定义，远程读取会返回配置错误。
 
+文本优化配置采用 `LLM_PROVIDER=deepseek`、`DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL` 和 `DEEPSEEK_MODEL`。默认模型为 `deepseek-flash`，地址为 `https://api.deepseek.com`。Windows 启动脚本在进程未配置时读取同名用户环境变量。密钥留在本机环境，示例文件保持空值。
+
 ## 已实现工具
 
 | 工具 | 用途 |
@@ -50,6 +52,12 @@ MCP 客户端配置示例如下。凭证由客户端环境配置或安全存储�
 | `product_capture_snapshot` | 保存完整、不可变的原始详情快照 |
 | `product_prepare_weight_draft` | 从快照生成重量草稿，相同快照重复调用返回同一草稿 |
 | `product_preview_changes` | 查看待审核草稿和 JSON Pointer 差异 |
+| `product_analyze` | 从快照生成带来源引文的商品分析 |
+| `product_research_keywords` | 合并人工关键词与模型推荐词，标注来源 |
+| `product_optimize_content` | 根据已校验分析生成英文标题和固定 HTML 描述草稿 |
+| `product_translate_sku` | 翻译全部规格名称和值，保留原始关联结构 |
+| `product_optimize` | 顺序执行分析、关键词、内容和 SKU 翻译，生成完整文本草稿 |
+| `product_get_generation_record` | 查询模型、Prompt、输入摘要、输出、校验及审核状态 |
 
 采集箱分页使用妙手账号源页。即使当前页过滤后无店铺匹配项，也应根据 `hasMoreSourcePages` 继续翻页。
 
@@ -61,7 +69,19 @@ MCP 客户端配置示例如下。凭证由客户端环境配置或安全存储�
 - 商品原始重量缺失或重量超出 `0.001–100 kg` 范围时阻断草稿生成。
 - SKU ID、Map Key、规格顺序、库存和仓库映射保持原值。
 
-重量草稿仅保存到本地数据库，状态为 `PENDING_REVIEW`。保存审批、远程写入及回读校验属于 M7–M8。M4–M6 将接入内容优化、图片 Provider 和经过对照验证的定价引擎。
+重量和文本草稿保存到本地数据库，状态为 `PENDING_REVIEW`。保存审批、远程写入及回读校验属于 M7–M8。图片 Provider 和经过对照验证的定价引擎属于 M5–M6。
+
+## M4 使用流程
+
+先调用 `product_capture_snapshot` 获取快照，再用该 `snapshotId` 调用 `product_optimize`，传入 `manualKeywords` 数组。完整流程顺序调用三次模型，返回分析、内容、SKU 三条生成记录 ID，以及待审核草稿。`product_preview_changes` 可读取持久化草稿。
+
+分步操作时，先调用 `product_analyze`，将其 `generationId` 作为 `analysisId` 用于关键词和内容工具。SKU 翻译工具可独立生成草稿。
+
+人工词与模型推荐词分别标记为 `manual`、`model_recommendation`，市场搜索量和增长率为 null。内容自动校验包含结构、引文、数字、长度、危险 HTML 文本和 SKU 身份。`STRUCTURE_VALIDATED` 表示这些检查已通过，事实语义与营销质量仍处于 `PENDING_REVIEW`。
+
+描述由固定模板构造，原始图片 URL、数量与顺序保留。SKU 翻译按维度索引及原值 ID 匹配，并保留原有数组顺序。文本草稿保留原始重量、价格和库存，重量规则使用独立的重量草稿工具。
+
+模型异常、空白、截断、无效结构或引文不匹配会留下失败生成记录。完整流程在所需阶段通过校验后创建草稿，失败结果可通过生成记录 ID 查看。重新生成会创建新的模型记录，原始快照保持不变。
 
 ## 凭证
 
@@ -73,6 +93,8 @@ API 凭证从进程环境读取，数据库和日志不保存凭证。也可用 
 ./scripts/build.ps1
 ```
 
-测试包含独立 HMAC 黄金向量、签名与 HTTP 请求字节一致性、错误脱敏、重量缺失兜底、重复计算、上限校验、多维 SKU 关联、未知字段保留及 SQLite 并发草稿幂等性。用合成数据执行自动化验证，实际商品快照与 API 凭证留在本地。
+测试包含独立 HMAC 黄金向量、请求字节一致性、错误脱敏、重量兜底、SKU 关联、快照及并发草稿，以及模型 JSON 模式、失败审计、来源引文、数字规格、HTML 图片保留、关键词来源和完整优化工作流。用合成数据执行自动化验证，实际商品快照、生成记录与 API 凭证留在本地。
 
 设计来源与实现范围见 [需求](temp-doc/nxq.md)、[技术方案](temp-doc/technical-design.md)、[接口映射](temp-doc/api-mapping.md)、[验收计划](temp-doc/test-plan.md) 和 [初版验收记录](temp-doc/test-results.md)。
+
+M4 的 [需求](temp-doc/M4-nxq.md)、[技术设计](temp-doc/M4-technical-design.md)、[任务拆分](temp-doc/M4-task.md) 和 [验收记录](temp-doc/M4-test-results.md) 记录本阶段决策与结果。
