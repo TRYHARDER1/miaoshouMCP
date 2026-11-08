@@ -272,7 +272,7 @@ class ImageBatchIntegrationTest {
         String sid=snapshot(1); var p=service.create(sid,null);
         jdbc.update("UPDATE ms_image_batch_plan SET manifest_hash='bad' WHERE id=?",p.batchPlanId());
         code(() -> service.get(sid,null),"BATCH_MANIFEST_CHANGED");
-        assertThat(tools.getToolCallbacks()).hasSize(24);
+        assertThat(tools.getToolCallbacks()).hasSize(28);
         assertThat(Arrays.stream(tools.getToolCallbacks()).map(t -> t.getToolDefinition().name()))
                 .contains("product_image_create_batches","product_image_get_batches","product_image_recover_batches");
     }

@@ -6,7 +6,7 @@ Java 21、Spring Boot 3.5.16、Spring AI 1.1.8、MyBatis-Plus 与 SQLite 的本�
 
 M5.1 已完成图片资产提取与引用映射，并按用户确认适配真实 SKU 字段。商品图暂为 UNCLASSIFIED，首图仅标记主图候选。进度见 [M5 任务](temp-doc/M5/M5-task.md)，阶段结果见 [M5.1 测试报告](temp-doc/M5/M5.1-test-report.md)。
 
-M5.2 已完成持久化批次调度，支持幂等创建、暂停/恢复、取消、失败重试与租期异常恢复，见 [M5.2 测试报告](temp-doc/M5/M5.2-test-report.md)。当前没有图片处理执行器，M5.3 尚未实施。
+M5.2 已完成持久化批次调度，支持幂等创建、暂停/恢复、取消、失败重试与租期异常恢复，见 [M5.2 测试报告](temp-doc/M5/M5.2-test-report.md)。M5.3 已完成包含实际原图的 Muse 人工任务包和结果链接登记，见 [M5.3 测试报告](temp-doc/M5/M5.3-test-report.md)。当前没有图片优化执行器，M5.4 尚未实施。
 
 ## 启动
 
@@ -71,6 +71,10 @@ MCP 客户端配置示例如下。凭证由客户端环境配置或安全存储�
 | `product_image_cancel_batch` | 永久取消指定批次，保留完成结果，跳过其余任务 |
 | `product_image_retry_batch` | 只重排原批次的 FAILED 任务，不重复分配 |
 | `product_image_recover_batches` | 回收过期尝试并读取原计划，不自动重试 |
+| `product_image_export_batch` | 从已有 batchId 导出实际原图、完整 manifest 和英文 Prompt |
+| `product_image_mark_handed_off` | 明确记录人工交接，不远程提交 Muse |
+| `product_image_submit_results` | 按 assetId 原子登记 1–4 条下载链接，允许部分提交 |
+| `product_image_get_batch_results` | 查看持久化交接状态、原链接及尚缺资产，修复链接文件投影 |
 
 采集箱分页使用妙手账号源页。即使当前页过滤后无店铺匹配项，也应根据 `hasMoreSourcePages` 继续翻页。
 
@@ -113,6 +117,20 @@ MCP 客户端配置示例如下。凭证由客户端环境配置或安全存储�
 状态落在 SQLite 新增三表中，原快照和草稿不变。暂停保留进度；恢复复用原任务；取消不能撤销，会将未完成任务标为 SKIPPED。失败重试仅更新原 FAILED 行及 retryCount，已经完成的资产不会重新入队。
 
 本阶段不派发图片。内部领取/心跳/结果服务使用尝试 token 和租期，默认 1800 秒，可用 Spring 属性 `image-batch.lease-seconds` 设置为 1–86400。启动及查询/控制操作将过期 PROCESSING 标为 FAILED/LEASE_EXPIRED，未过期状态保留。异常恢复不会自动重试未来的外部处理；应先核对外部结果，再明确调用重试。COMPLETED 仅是调度状态，不代表 Muse 已优化或图片质量合格。
+
+## M5.3 Muse 人工交接
+
+1. 从已有计划选择 batchId，调用 `product_image_export_batch`。导出时只获取该批次的快照原图，最多四张；返回 jobId、manifest、prompt、exportPath 和交接状态。同批次重复导出复用版本 1，其他 version 返回冲突。
+2. 打开 exportPath，找到 `batches/BATCH-{batchId}/original/` 的图片文件，将这些文件和 prompt.md 人工交给 Muse。文件名保留 assetId，要求 Muse 为每张原图独立返回对应 assetId 的结果。
+3. 人工交接后可调用 `product_image_mark_handed_off`；这仅记录 WAITING_MUSE，不占用 M5.2 租期。
+4. 调用 `product_image_submit_results`，传入 batchId 与 results 数组，每项包含 assetId、downloadUrl，可分次提交。相同链接重复提交幂等，不同链接或同 URL 映射多资产会冲突。未收到的资产保留在 missingAssetIds。
+5. 用 `product_image_get_batch_results` 查询登记。LINK_REGISTERED、downloadVerified=false 只表示链接已保存，当前不下载结果，不表示质量合格或上传完成。
+
+任务包默认位于 `.data/image-jobs/JOB-{jobId}/`，根目录由 Spring 属性 `muse.jobs-root` 配置。安全原图获取仅允许公网 HTTPS/443，逐跳核对重定向/DNS/IP，连接固定已核对 IP，保留 TLS 校验；每图最多 8 MiB，只支持实际解码通过的 JPEG/PNG。单个元数据/Prompt 文件最多 2 MiB。源图为 HTTP、其他格式、不可达或超限时明确失败，不缺图交接。
+
+人工交接状态独立持久化为 EXPORTED、WAITING_MUSE、PARTIALLY_RECEIVED、LINKS_RECEIVED；导出预约使用 CREATING，失败为 EXPORT_FAILED。活动导出无完整目录时重复请求返回忙；失败/超时后可重试，已发布目录可恢复，文件损坏不会被静默覆盖。结果以数据库为准，result-links.json 写入失败时返回 SYNC_PENDING，后续查询可修复。失败时可能留下私有 `.staging` 目录，程序不自动删除。
+
+当前共 28 个工具。暂停、取消、处理中批次禁止新的交接操作；历史链接仍可查询。没有 Muse API/网页自动化、结果图片下载、图片上传、商品图片草稿修改、保存或发布。
 
 ## 凭证
 

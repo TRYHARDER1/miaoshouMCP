@@ -78,3 +78,29 @@ CREATE TABLE IF NOT EXISTS ms_image_batch_task (
 CREATE INDEX IF NOT EXISTS idx_image_batch_state ON ms_image_batch(plan_id, status);
 CREATE INDEX IF NOT EXISTS idx_image_task_batch ON ms_image_batch_task(batch_id, sequence);
 CREATE INDEX IF NOT EXISTS idx_image_task_expiry ON ms_image_batch_task(status, lease_until);
+
+-- M5.3 manual handoff is independent of M5.2 processing leases.
+CREATE TABLE IF NOT EXISTS ms_muse_job (
+  job_id TEXT PRIMARY KEY, -- stable controlled UUID
+  batch_id TEXT NOT NULL UNIQUE REFERENCES ms_image_batch(id), -- one unambiguous package per batch
+  version INTEGER NOT NULL CHECK(version=1), -- no silent regeneration or version upgrade
+  status TEXT NOT NULL CHECK(status IN ('CREATING','EXPORT_FAILED','EXPORTED','WAITING_MUSE','PARTIALLY_RECEIVED','LINKS_RECEIVED')),
+  context_json TEXT NOT NULL, -- frozen source assets and all original references
+  package_json TEXT, -- published manifest with verified original file metadata
+  build_token TEXT, -- exporter fencing token, not an image task claim
+  lease_until TEXT, -- UTC export reservation deadline, not manual Muse waiting time
+  error_code TEXT, -- safe export failure code only
+  created_at TEXT NOT NULL, -- UTC creation
+  updated_at TEXT NOT NULL -- UTC most recent handoff event
+);
+CREATE TABLE IF NOT EXISTS ms_muse_result (
+  job_id TEXT NOT NULL REFERENCES ms_muse_job(job_id), -- exact exported package
+  asset_id TEXT NOT NULL UNIQUE, -- a stable M5.1 asset cannot receive conflicting results
+  download_url TEXT NOT NULL, -- exact submitted URL, never downloaded in M5.3
+  url_hash TEXT NOT NULL UNIQUE, -- rejects a result URL mapped to multiple assets
+  registered_at TEXT NOT NULL, -- original UTC registration time
+  status TEXT NOT NULL CHECK(status='LINK_REGISTERED'), -- registration is not quality approval
+  download_verified INTEGER NOT NULL DEFAULT 0 CHECK(download_verified=0), -- always false in this stage
+  PRIMARY KEY(job_id,asset_id)
+);
+CREATE INDEX IF NOT EXISTS idx_muse_job_status ON ms_muse_job(status,lease_until);
