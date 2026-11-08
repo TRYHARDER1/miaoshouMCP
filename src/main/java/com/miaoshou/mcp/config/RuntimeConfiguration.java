@@ -3,6 +3,7 @@ package com.miaoshou.mcp.config;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.miaoshou.mcp.mcp.ProductTools;
 import com.miaoshou.mcp.mcp.OptimizationTools;
+import com.miaoshou.mcp.mcp.ProductImageTools;
 import java.time.Clock;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
@@ -23,7 +24,7 @@ public class RuntimeConfiguration {
     }
 
     @Bean
-    ToolCallbackProvider productToolCallbacks(ProductTools tools, OptimizationTools optimization) {
-        return MethodToolCallbackProvider.builder().toolObjects(tools, optimization).build();
+    ToolCallbackProvider productToolCallbacks(ProductTools tools, OptimizationTools optimization, ProductImageTools images) {
+        return MethodToolCallbackProvider.builder().toolObjects(tools, optimization, images).build();
     }
 }

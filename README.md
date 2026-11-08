@@ -4,7 +4,7 @@ Java 21、Spring Boot 3.5.16、Spring AI 1.1.8、MyBatis-Plus 与 SQLite 的本�
 
 当前实现包含 M0–M3 基础、重量草稿以及 M4 DeepSeek 文本优化。里程碑与阶段边界见 [开发任务](temp-doc/task.md)。
 
-M5.1 正在开发，已完成商品图和详情图提取基础。真实 SKU 图片路径与计划假设不同，已按计划暂停相关分支并等待确认；新图片工具尚未注册。进度及续接入口见 [M5 任务](temp-doc/M5/M5-task.md)，阶段结果见 [M5.1 测试记录](temp-doc/M5/M5.1-test-report.md)。
+M5.1 已完成图片资产提取与引用映射，并按用户确认适配真实 SKU 字段。商品图暂为 UNCLASSIFIED，首图仅标记主图候选。进度见 [M5 任务](temp-doc/M5/M5-task.md)，阶段结果见 [M5.1 测试报告](temp-doc/M5/M5.1-test-report.md)。
 
 ## 启动
 
@@ -60,6 +60,7 @@ MCP 客户端配置示例如下。凭证由客户端环境配置或安全存储�
 | `product_translate_sku` | 翻译全部规格名称和值，保留原始关联结构 |
 | `product_optimize` | 顺序执行分析、关键词、内容和 SKU 翻译，生成完整文本草稿 |
 | `product_get_generation_record` | 查询模型、Prompt、输入摘要、输出、校验及审核状态 |
+| `product_image_extract_assets` | 从已有本地快照提取图片资产、全部引用位置与原始 SKU Key 关联 |
 
 采集箱分页使用妙手账号源页。即使当前页过滤后无店铺匹配项，也应根据 `hasMoreSourcePages` 继续翻页。
 
@@ -84,6 +85,14 @@ MCP 客户端配置示例如下。凭证由客户端环境配置或安全存储�
 描述由固定模板构造，原始图片 URL、数量与顺序保留。SKU 翻译按维度索引及原值 ID 匹配，并保留原有数组顺序。文本草稿保留原始重量、价格和库存，重量规则使用独立的重量草稿工具。
 
 模型异常、空白、截断、无效结构或引文不匹配会留下失败生成记录。完整流程在所需阶段通过校验后创建草稿，失败结果可通过生成记录 ID 查看。重新生成会创建新的模型记录，原始快照保持不变。
+
+## M5.1 图片提取
+
+调用 `product_image_extract_assets`，参数为已有本地 `snapshotId`。清单按原始 URL 去重，保留商品图、规格值图、HTML 详情图的全部物理引用位置。SKU 图片来自 `skuPropertyList[].attrValueList[].imgUrl`，每条引用的 `skuMapKeys` 包含全部关联组合。
+
+`totalAssets` 是去重资产数量，`totalReferences` 是非空 URL 位置数量；同一规格图片关联多个 SKU 仍只计一个位置。角色摘要按引用计数。各 sequence、数组及 HTML 图片索引从 0 开始，sourcePath 相对 `shopCollectItemInfo`。空 URL 计入 skippedEmptyReferences，非法 URL 保留引用并标为 INVALID_URL，调用方应先检查 validation。
+
+商品图没有独立主图标记，因此保持 UNCLASSIFIED，索引 0 只作候选。URL 只做本地语法校验，不确认可达性；不下载、调用 Muse、上传、修改草稿或保存商品。非空的未验证 SKU 图片字段会明确报错，避免遗漏。完整字段约定见 [字段映射](temp-doc/M5/M5.1-field-mapping.md)。M5.2 尚未实施。
 
 ## 凭证
 

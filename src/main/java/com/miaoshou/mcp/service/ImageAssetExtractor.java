@@ -13,13 +13,14 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import org.jsoup.Jsoup;
 import org.springframework.stereotype.Component;
 
-/** Product-list and description extraction foundation; not yet exposed as an MCP tool. */
+/** Pure local extraction preserving physical positions and all original SKU associations. */
 @Component
 public class ImageAssetExtractor {
     public ImageAssetManifest extract(SnapshotRow row, JsonNode product) {
@@ -34,6 +35,7 @@ public class ImageAssetExtractor {
                 state.warnings.add(new Issue("PRODUCT_IMAGE_ROLE_UNCONFIRMED", "/imgUrls", null));
             }
         }
+        extractSku(product, state);
         JsonNode notes = product.path("notes");
         if (!notes.isMissingNode() && !notes.isNull() && !notes.isTextual()) {
             state.errors.add(new Issue("EXPECTED_HTML_STRING", "/notes", null));
@@ -45,6 +47,41 @@ public class ImageAssetExtractor {
             }
         }
         return state.manifest();
+    }
+
+    private void extractSku(JsonNode product, State state) {
+        JsonNode properties = product.path("skuPropertyList");
+        if (state.arrayOrAbsent(properties, "/skuPropertyList")) {
+            for (int dimension = 0; dimension < properties.size(); dimension++) {
+                String path = "/skuPropertyList/" + dimension + "/attrValueList";
+                JsonNode values = properties.get(dimension).path("attrValueList");
+                if (!state.arrayOrAbsent(values, path)) { continue; }
+                for (int index = 0; index < values.size(); index++) {
+                    JsonNode value = values.get(index);
+                    String id = value.path("attrValueId").asText();
+                    List<String> keys = new ArrayList<>();
+                    product.path("skuMap").fieldNames().forEachRemaining(key -> {
+                        if (Arrays.asList(key.split(";", -1)).contains(id)) { keys.add(key); }
+                    });
+                    String source = path + "/" + index;
+                    JsonNode image = value.path("imgUrl");
+                    state.add(image, ReferenceType.SKU_IMAGE, ImageAssetType.SKU_IMAGE,
+                            source + "/imgUrl", index, keys, null, false);
+                    if (image.isTextual() && !image.textValue().isBlank() && keys.isEmpty()) {
+                        state.warnings.add(new Issue("SKU_IMAGE_WITHOUT_SKU", source + "/imgUrl", null));
+                    }
+                    state.rejectUnknownImages(value.path("supplementarySkuImageUrls"),
+                            source + "/supplementarySkuImageUrls");
+                }
+            }
+        }
+        // Do not silently claim complete extraction when an unverified image structure appears.
+        product.path("skuMap").fields().forEachRemaining(entry -> {
+            String source = "/skuMap/" + pointerToken(entry.getKey());
+            state.rejectUnknownImages(entry.getValue().path("imgUrl"), source + "/imgUrl");
+            state.rejectUnknownImages(entry.getValue().path("supplementarySkuImageUrls"),
+                    source + "/supplementarySkuImageUrls");
+        });
     }
 
     public static String pointerToken(String value) {
@@ -81,6 +118,12 @@ public class ImageAssetExtractor {
         private int skipped;
 
         private State(SnapshotRow row) { this.row = row; }
+
+        private void rejectUnknownImages(JsonNode node, String path) {
+            if (node.isMissingNode() || node.isNull() || (node.isTextual() && node.textValue().isBlank())
+                    || (node.isArray() && node.isEmpty())) { return; }
+            errors.add(new Issue("UNSUPPORTED_SKU_IMAGE_FIELD", path, null));
+        }
 
         private boolean arrayOrAbsent(JsonNode node, String path) {
             if (node.isMissingNode() || node.isNull()) {
