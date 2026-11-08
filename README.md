@@ -6,7 +6,7 @@ Java 21、Spring Boot 3.5.16、Spring AI 1.1.8、MyBatis-Plus 与 SQLite 的本�
 
 M5.1 已完成图片资产提取与引用映射，并按用户确认适配真实 SKU 字段。商品图暂为 UNCLASSIFIED，首图仅标记主图候选。进度见 [M5 任务](temp-doc/M5/M5-task.md)，阶段结果见 [M5.1 测试报告](temp-doc/M5/M5.1-test-report.md)。
 
-M5.2 已完成持久化批次调度，支持幂等创建、暂停/恢复、取消、失败重试与租期异常恢复，见 [M5.2 测试报告](temp-doc/M5/M5.2-test-report.md)。M5.3 已完成包含实际原图的 Muse 人工任务包和结果链接登记，见 [M5.3 测试报告](temp-doc/M5/M5.3-test-report.md)。当前没有图片优化执行器，M5.4 尚未实施。
+M5.2–M5.3 已完成批次和人工交接。安全修正新增独立白名单交付副本，见 [安全修正报告](temp-doc/M5/M5.3-security-fix-report.md)。M5.4 已实现已登记结果的安全下载、技术完整性校验和本地恢复，见 [M5.4 技术测试报告](temp-doc/M5/M5.4-test-report.md)；真实 Muse 输出验收待补，不涉及视觉质量审核或上传。
 
 ## 启动
 
@@ -75,6 +75,12 @@ MCP 客户端配置示例如下。凭证由客户端环境配置或安全存储�
 | `product_image_mark_handed_off` | 明确记录人工交接，不远程提交 Muse |
 | `product_image_submit_results` | 按 assetId 原子登记 1–4 条下载链接，允许部分提交 |
 | `product_image_get_batch_results` | 查看持久化交接状态、原链接及尚缺资产，修复链接文件投影 |
+| `product_image_export_muse_delivery` | 从内部包生成外发白名单副本，去除 URL、SKU Key 和 references |
+| `product_image_download_results` | 仅获取数据库已登记的结果，按资产独立校验与保存 |
+| `product_image_get_processed_results` | 查询独立处理状态，可本地核对文件；不自动联网 |
+| `product_image_get_download_progress` | 查询登记/缺链接/各处理状态统计，不等于最新文件健康保证 |
+| `product_image_retry_download` | expectedRowVersion 约束下明确重试暂时失败，不换链接或覆盖成品 |
+| `product_image_recover_downloads` | 从完整本地阶段或发布凭据恢复，不启动网络下载 |
 
 采集箱分页使用妙手账号源页。即使当前页过滤后无店铺匹配项，也应根据 `hasMoreSourcePages` 继续翻页。
 
@@ -121,7 +127,7 @@ MCP 客户端配置示例如下。凭证由客户端环境配置或安全存储�
 ## M5.3 Muse 人工交接
 
 1. 从已有计划选择 batchId，调用 `product_image_export_batch`。导出时只获取该批次的快照原图，最多四张；返回 jobId、manifest、prompt、exportPath 和交接状态。同批次重复导出复用版本 1，其他 version 返回冲突。
-2. 打开 exportPath，找到 `batches/BATCH-{batchId}/original/` 的图片文件，将这些文件和 prompt.md 人工交给 Muse。文件名保留 assetId，要求 Muse 为每张原图独立返回对应 assetId 的结果。
+2. 旧 exportPath 是内部管理包，含原 URL 和 SKU 关联。调用 `product_image_export_muse_delivery(batchId)`，只把它返回的独立交付目录中的图片、manifest.json 和 prompt.md 交给 Muse。新目录不包含源 URL、SKU Key、references、内部业务 ID 或结果链接。图片原字节保留，未额外清理图像嵌入元数据。
 3. 人工交接后可调用 `product_image_mark_handed_off`；这仅记录 WAITING_MUSE，不占用 M5.2 租期。
 4. 调用 `product_image_submit_results`，传入 batchId 与 results 数组，每项包含 assetId、downloadUrl，可分次提交。相同链接重复提交幂等，不同链接或同 URL 映射多资产会冲突。未收到的资产保留在 missingAssetIds。
 5. 用 `product_image_get_batch_results` 查询登记。LINK_REGISTERED、downloadVerified=false 只表示链接已保存，当前不下载结果，不表示质量合格或上传完成。
@@ -130,7 +136,25 @@ MCP 客户端配置示例如下。凭证由客户端环境配置或安全存储�
 
 人工交接状态独立持久化为 EXPORTED、WAITING_MUSE、PARTIALLY_RECEIVED、LINKS_RECEIVED；导出预约使用 CREATING，失败为 EXPORT_FAILED。活动导出无完整目录时重复请求返回忙；失败/超时后可重试，已发布目录可恢复，文件损坏不会被静默覆盖。结果以数据库为准，result-links.json 写入失败时返回 SYNC_PENDING，后续查询可修复。失败时可能留下私有 `.staging` 目录，程序不自动删除。
 
-当前共 28 个工具。暂停、取消、处理中批次禁止新的交接操作；历史链接仍可查询。没有 Muse API/网页自动化、结果图片下载、图片上传、商品图片草稿修改、保存或发布。
+当前共 34 个工具。暂停、取消、处理中批次禁止新的交接操作；历史链接仍可查询。没有 Muse API/网页自动化、图片上传、商品图片草稿修改、保存或发布。结果下载只由 M5.4 的明确工具请求触发。
+
+安全交付默认在 `.data/muse-deliveries/DELIVERY-{deliveryId}/`，可用 Spring 属性 `muse.delivery-root` 指定私有根目录。它是同一内部 job 的独立策略版本投影，旧 jobVersion=1、旧 Prompt、包及所有关联保持。不要把整个内部 JOB 目录作为外发目录。
+
+## M5.4 结果文件与技术校验
+
+链接先通过 M5.3 登记，再调用 `product_image_download_results(batchId, assetIds?)`。省略列表只处理已登记资产；空数组、跨批资产拒绝。结果是逐资产的状态/文件元数据，部分失败不回滚相邻成功。不接受任意 URL/path/force 参数。
+
+只支持公网 HTTPS/443 的 JPEG/PNG，每图最多 8 MiB、4000 万像素、单边 20000。逐跳核对 DNS/IP 并固定连接、TLS 证书/主机名校验，关闭代理和自动重试；传输字节、超时及工作容量有界。PNG CRC/结构、JPEG 终止标记、真实解码和 warning 都参与检查，不凭扩展名判断。每进程最多两个实际工作位，数据库也限制两个有效活跃租期；这不意味着能强杀其他进程已过期的解码线程。
+
+默认目录在内部包的 `processed/A1`–`A4`，短父目录对应冻结批内顺序以兼容 Windows；图片文件名和 integrity.json 均保留完整 assetId。原图、旧 job.json/manifest.json/prompt.md 不改。技术状态和事件只写新增 ms_muse_processed_result/event，不更新 M5.3 downloadVerified；旧字段仍表示登记阶段未做验证。技术通过的新视图为 integrityVerified=true、visualReviewStatus=NOT_REVIEWED。
+
+`get_processed_results` 默认核对本地摘要；verifyLocal=false 时 fileHealth=UNKNOWN、integrityVerified=false。进度只反映持久化状态。损坏/缺失成品会登记明确失败，不自动覆盖；相同内容的不同资产独立保存并提示 duplicateContent。签名链接过期不自动换签，403/404 等明确阻断。
+
+有效结果重复请求不重新下载。中断后用 `recover_downloads` 重用完整本地阶段或发布凭据，新 owner 使用新 token；没有完整数据时明确重试，从头获取，不拼接半文件。普通 download 不自动重排 FAILED；暂时失败用 retry_download 指定查询到的 rowVersion，最多三次网络重试。源码登记 URL、原图和成品冲突不能用该工具覆盖。
+
+升级首次添加 M5.4 两表之前，会在旧库同目录的 `.backups` 使用 SQLite 一致备份；失败则停止初始化。两表和索引原子创建，不重建旧表；不兼容结构明确拒绝。备份/原图/结果/临时目录都应保持私有。失败和成功阶段可能保留 staging 供恢复诊断，程序不自动删除。
+
+当前已完成代码与技术夹具验收；真实 Muse 输出验收按用户选择待补。公开图片传输夹具不代表 Muse 已优化，也不构成视觉质量合格。没有进入 M5.5。
 
 ## 凭证
 

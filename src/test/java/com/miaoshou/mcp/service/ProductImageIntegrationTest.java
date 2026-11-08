@@ -35,7 +35,7 @@ class ProductImageIntegrationTest {
         var drafts = jdbc.queryForList("SELECT * FROM ms_product_draft");
         var generations = jdbc.queryForList("SELECT * FROM ms_ai_generation");
         var tools = callbacks.getToolCallbacks();
-        assertThat(tools).hasSize(28);
+        assertThat(tools).hasSize(34);
         var tool = Arrays.stream(tools).filter(t -> t.getToolDefinition().name().equals("product_image_extract_assets"))
                 .findFirst().orElseThrow();
         assertThat(Fixtures.JSON.readTree(tool.getToolDefinition().inputSchema()).path("properties").size()).isEqualTo(1);

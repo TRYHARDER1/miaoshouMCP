@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 public class MuseJobTools {
     private final MuseJobService jobs;
     public MuseJobTools(MuseJobService jobs) { this.jobs=jobs; }
-    @Tool(name="product_image_export_batch",description="Export an existing batch as an idempotent version-1 Muse package with 1–4 verified original image files, manifest and English Prompt. Downloads only original snapshot images; never calls Muse.")
+    @Tool(name="product_image_export_batch",description="Create/reuse an INTERNAL version-1 package with originals and private source URLs/SKU associations. For external Muse sharing use product_image_export_muse_delivery instead. Downloads only snapshot originals; never calls Muse.")
     public ExportView export(String batchId,@ToolParam(required=false) Integer version) { return jobs.export(batchId,version); }
     @Tool(name="product_image_mark_handed_off",description="Record explicit manual handoff to Muse. Independent of M5.2 processing leases; performs no remote submission.")
     public ResultsView handedOff(String batchId,@ToolParam(required=false) Integer version) { return jobs.handedOff(batchId,version); }

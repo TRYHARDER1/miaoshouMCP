@@ -6,6 +6,8 @@ import com.miaoshou.mcp.mcp.OptimizationTools;
 import com.miaoshou.mcp.mcp.ProductImageTools;
 import com.miaoshou.mcp.mcp.ImageBatchTools;
 import com.miaoshou.mcp.mcp.MuseJobTools;
+import com.miaoshou.mcp.mcp.MuseDeliveryTools;
+import com.miaoshou.mcp.mcp.MuseProcessedImageTools;
 import java.time.Clock;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
@@ -27,7 +29,7 @@ public class RuntimeConfiguration {
 
     @Bean
     ToolCallbackProvider productToolCallbacks(ProductTools tools, OptimizationTools optimization, ProductImageTools images,
-                                              ImageBatchTools batches,MuseJobTools muse) {
-        return MethodToolCallbackProvider.builder().toolObjects(tools, optimization, images, batches,muse).build();
+                                              ImageBatchTools batches,MuseJobTools muse,MuseDeliveryTools delivery,MuseProcessedImageTools processed) {
+        return MethodToolCallbackProvider.builder().toolObjects(tools, optimization, images, batches,muse,delivery,processed).build();
     }
 }

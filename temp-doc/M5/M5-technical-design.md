@@ -21,3 +21,9 @@ M5.1 保持纯提取；M5.2 新增三张调度表和 ImageBatchService/MyBatis M
 ## M5.3 扩展
 
 新增独立 job/result 表，人工交接不领取 M5.2 任务；只读批次上下文，安全获取快照原图，导出固定版本包及 Prompt，按 assetId 登记链接但不下载结果。文件系统和数据库一致性采用预约 token、原子目录发布及可重建链接投影。安全限制、版本/恢复语义见 [M5.3 技术设计](M5.3-technical-design.md)。
+
+## 已批准的安全交付与 M5.4
+
+外发使用独立专用 DTO/Prompt/目录，不动历史 v1 或原关联，见 [安全修正报告](M5.3-security-fix-report.md)。M5.4 仅从已登记链接读取原始结果数据，采用独立处理/事件两表、CAS/token、原子资产目录与严格技术校验；旧 download_verified=0 约束保持。首次升级前一致备份，追加 DDL 原子提交，旧表不重建。
+
+代码与技术测试完成，真实 Muse 输出验收待补，见 [M5.4 报告](M5.4-test-report.md)。技术 VALIDATED 不能解释为视觉质量合格；当前没有上传、商品图片替换或发布。
