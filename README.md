@@ -6,6 +6,8 @@ Java 21、Spring Boot 3.5.16、Spring AI 1.1.8、MyBatis-Plus 与 SQLite 的本�
 
 M5.1 已完成图片资产提取与引用映射，并按用户确认适配真实 SKU 字段。商品图暂为 UNCLASSIFIED，首图仅标记主图候选。进度见 [M5 任务](temp-doc/M5/M5-task.md)，阶段结果见 [M5.1 测试报告](temp-doc/M5/M5.1-test-report.md)。
 
+M5.2 已完成持久化批次调度，支持幂等创建、暂停/恢复、取消、失败重试与租期异常恢复，见 [M5.2 测试报告](temp-doc/M5/M5.2-test-report.md)。当前没有图片处理执行器，M5.3 尚未实施。
+
 ## 启动
 
 准备 Java 21 和 Maven 3.6.3 或更新版本。PowerShell 7 下执行以下命令。
@@ -61,6 +63,14 @@ MCP 客户端配置示例如下。凭证由客户端环境配置或安全存储�
 | `product_optimize` | 顺序执行分析、关键词、内容和 SKU 翻译，生成完整文本草稿 |
 | `product_get_generation_record` | 查询模型、Prompt、输入摘要、输出、校验及审核状态 |
 | `product_image_extract_assets` | 从已有本地快照提取图片资产、全部引用位置与原始 SKU Key 关联 |
+| `product_image_create_batches` | 创建或复用快照唯一批次计划，batchSize 默认 4、允许 1–4 |
+| `product_image_get_batches` | 按 snapshotId 或 batchPlanId 读取完整持久化批次 |
+| `product_image_get_batch_progress` | 查询已分配、各状态、剩余及可领取数量 |
+| `product_image_pause_batch` / `product_image_resume_batch` | 暂停或恢复指定 batchId |
+| `product_image_pause_batches` / `product_image_resume_batches` | 原子暂停或恢复一个快照计划的剩余批次 |
+| `product_image_cancel_batch` | 永久取消指定批次，保留完成结果，跳过其余任务 |
+| `product_image_retry_batch` | 只重排原批次的 FAILED 任务，不重复分配 |
+| `product_image_recover_batches` | 回收过期尝试并读取原计划，不自动重试 |
 
 采集箱分页使用妙手账号源页。即使当前页过滤后无店铺匹配项，也应根据 `hasMoreSourcePages` 继续翻页。
 
@@ -92,7 +102,17 @@ MCP 客户端配置示例如下。凭证由客户端环境配置或安全存储�
 
 `totalAssets` 是去重资产数量，`totalReferences` 是非空 URL 位置数量；同一规格图片关联多个 SKU 仍只计一个位置。角色摘要按引用计数。各 sequence、数组及 HTML 图片索引从 0 开始，sourcePath 相对 `shopCollectItemInfo`。空 URL 计入 skippedEmptyReferences，非法 URL 保留引用并标为 INVALID_URL，调用方应先检查 validation。
 
-商品图没有独立主图标记，因此保持 UNCLASSIFIED，索引 0 只作候选。URL 只做本地语法校验，不确认可达性；不下载、调用 Muse、上传、修改草稿或保存商品。非空的未验证 SKU 图片字段会明确报错，避免遗漏。完整字段约定见 [字段映射](temp-doc/M5/M5.1-field-mapping.md)。M5.2 尚未实施。
+商品图没有独立主图标记，因此保持 UNCLASSIFIED，索引 0 只作候选。URL 只做本地语法校验，不确认可达性；不下载、调用 Muse、上传、修改草稿或保存商品。非空的未验证 SKU 图片字段会明确报错，避免遗漏。完整字段约定见 [字段映射](temp-doc/M5/M5.1-field-mapping.md)。
+
+## M5.2 批次调度
+
+先调用 `product_image_create_batches`，传入已有 `snapshotId` 和可选 `batchSize`。同一快照重复或并发调用返回原计划；省略大小时复用已有配置，显式指定不同大小会返回 BATCH_SIZE_CONFLICT。清单验证失败时整笔拒绝，不生成部分计划。空清单返回持久化的空计划。总工具数为 24。
+
+查询工具接受 snapshotId、batchPlanId 至少一个，两者同时传入时必须一致。结果中的 batches[].tasks[].task 是持久化任务状态，asset 是完整 M5.1 资产及全部引用。totalSkipped 统计跳过的资产任务，空图片引用不计入任务。remaining=pending+processing+failed；pending 包含暂停中的待处理任务，eligiblePending 是当前允许领取的数量。
+
+状态落在 SQLite 新增三表中，原快照和草稿不变。暂停保留进度；恢复复用原任务；取消不能撤销，会将未完成任务标为 SKIPPED。失败重试仅更新原 FAILED 行及 retryCount，已经完成的资产不会重新入队。
+
+本阶段不派发图片。内部领取/心跳/结果服务使用尝试 token 和租期，默认 1800 秒，可用 Spring 属性 `image-batch.lease-seconds` 设置为 1–86400。启动及查询/控制操作将过期 PROCESSING 标为 FAILED/LEASE_EXPIRED，未过期状态保留。异常恢复不会自动重试未来的外部处理；应先核对外部结果，再明确调用重试。COMPLETED 仅是调度状态，不代表 Muse 已优化或图片质量合格。
 
 ## 凭证
 

@@ -35,3 +35,46 @@ CREATE TABLE IF NOT EXISTS ms_ai_generation (
   error_code TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_generation_snapshot ON ms_ai_generation(snapshot_id, started_at);
+
+-- M5.2: immutable plan configuration; one plan per snapshot.
+CREATE TABLE IF NOT EXISTS ms_image_batch_plan (
+  id TEXT PRIMARY KEY, -- persisted plan identity
+  snapshot_id TEXT NOT NULL UNIQUE REFERENCES ms_product_snapshot(id), -- immutable asset context
+  batch_size INTEGER NOT NULL CHECK(batch_size BETWEEN 1 AND 4), -- maximum distinct assets per batch
+  manifest_hash TEXT NOT NULL, -- SHA256 of complete M5.1 manifest
+  total_assets INTEGER NOT NULL CHECK(total_assets >= 0), -- distinct asset count, not reference count
+  created_at TEXT NOT NULL, -- UTC fixed millisecond ISO-8601
+  updated_at TEXT NOT NULL -- most recent state change
+);
+CREATE TABLE IF NOT EXISTS ms_image_batch (
+  id TEXT PRIMARY KEY, -- stable persisted batch identity
+  plan_id TEXT NOT NULL REFERENCES ms_image_batch_plan(id), -- owner
+  sequence INTEGER NOT NULL CHECK(sequence >= 0), -- zero-based batch order
+  status TEXT NOT NULL CHECK(status IN ('PENDING','PROCESSING','PAUSED','COMPLETED','FAILED','CANCELLED')),
+  created_at TEXT NOT NULL, -- UTC allocation time
+  updated_at TEXT NOT NULL, -- UTC latest state update
+  UNIQUE(plan_id, sequence),
+  UNIQUE(plan_id, id) -- composite target prevents cross-plan task assignment
+);
+CREATE TABLE IF NOT EXISTS ms_image_batch_task (
+  plan_id TEXT NOT NULL REFERENCES ms_image_batch_plan(id), -- asset identity scope
+  batch_id TEXT NOT NULL, -- fixed original batch
+  asset_id TEXT NOT NULL, -- link to asset in reconstructed M5.1 manifest; no duplicated references
+  sequence INTEGER NOT NULL CHECK(sequence >= 0), -- original asset sequence
+  status TEXT NOT NULL CHECK(status IN ('PENDING','PROCESSING','COMPLETED','FAILED','SKIPPED')),
+  error_code TEXT, -- safe enum-like failure code, never raw external errors
+  retry_count INTEGER NOT NULL DEFAULT 0 CHECK(retry_count >= 0), -- explicit retry count
+  attempt_token TEXT, -- fences previous attempts
+  lease_until TEXT, -- UTC processing deadline, nullable otherwise
+  started_at TEXT, -- latest attempt start
+  completed_at TEXT, -- latest terminal event
+  created_at TEXT NOT NULL, -- original allocation
+  updated_at TEXT NOT NULL, -- latest state event
+  PRIMARY KEY(plan_id, asset_id), -- one asset allocation in this snapshot plan
+  UNIQUE(plan_id, sequence),
+  FOREIGN KEY(plan_id, batch_id) REFERENCES ms_image_batch(plan_id, id),
+  CHECK(status <> 'PROCESSING' OR (attempt_token IS NOT NULL AND lease_until IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS idx_image_batch_state ON ms_image_batch(plan_id, status);
+CREATE INDEX IF NOT EXISTS idx_image_task_batch ON ms_image_batch_task(batch_id, sequence);
+CREATE INDEX IF NOT EXISTS idx_image_task_expiry ON ms_image_batch_task(status, lease_until);

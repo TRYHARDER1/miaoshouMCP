@@ -13,3 +13,7 @@ ProductImageService 读取 SnapshotService.find/product，检查快照身份，�
 SKU 图片读取用户确认的实际规格值字段，通过精确 ID token 匹配原 SKU Map Key，支持 Key 内维度顺序变化。每个物理图片位置返回所有原始 skuMapKeys，多个位置即使共享 URL 也不会合并引用。无关联组合的图片保留引用并发出 SKU_IMAGE_WITHOUT_SKU 警告。非空的未验证图片字段产生明确错误，避免静默遗漏。
 
 本阶段不添加配置、外部客户端、网络调用、数据库表、缓存或草稿写入。M4 HtmlDescriptionBuilder 行为保持原样。
+
+## M5.2 扩展
+
+M5.1 保持纯提取；M5.2 新增三张调度表和 ImageBatchService/MyBatis Mapper。计划唯一性、任务唯一性、事务原子性、完整清单摘要、租期与尝试 token 共同保证恢复时不重建任务。详细状态机、DDL 位置及恢复规则见 [M5.2 技术设计](M5.2-technical-design.md)。没有执行器或外部图片处理。
